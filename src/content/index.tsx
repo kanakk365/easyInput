@@ -36,6 +36,19 @@ const Title = styled.h2`
   font-weight: 600;
 `;
 
+const InputLabel = styled.label`
+  display: block;
+  font-size: 14px;
+  font-weight: 500;
+  color: #374151;
+  margin-bottom: 6px;
+  margin-top: 16px;
+  
+  &:first-of-type {
+    margin-top: 0;
+  }
+`;
+
 const TextArea = styled.textarea`
   width: 100%;
   min-height: 120px;
@@ -115,6 +128,13 @@ const LoadingSpinner = styled.div`
   }
 `;
 
+const HelpText = styled.div`
+  font-size: 12px;
+  color: #6b7280;
+  margin-top: 4px;
+  line-height: 1.4;
+`;
+
 interface TextImprovementOverlayProps {
   initialText: string;
   onClose: () => void;
@@ -166,11 +186,19 @@ const TextImprovementOverlay: React.FC<TextImprovementOverlayProps> = ({
     <OverlayContainer onClick={handleOverlayClick}>
       <OverlayModal>
         <Title>Improve Text with AI</Title>
+        
+        <InputLabel htmlFor="text-input">Text to Improve</InputLabel>
         <TextArea
+          id="text-input"
           value={text}
           onChange={(e) => setText(e.target.value)}
           placeholder="Enter text to improve..."
         />
+        <HelpText>
+          Write your context directly on the website where you're using this extension. 
+          For example: "I am making an extension so make it a tweet for X"
+        </HelpText>
+        
         {error && <ErrorMessage>{error}</ErrorMessage>}
         <ButtonContainer>
           <Button variant="secondary" onClick={onClose}>
@@ -197,6 +225,8 @@ const TextImprovementOverlay: React.FC<TextImprovementOverlayProps> = ({
   );
 };
 
+
+
 // Content script main functionality
 class ContentScript {
   private overlayRoot: HTMLDivElement | null = null;
@@ -220,6 +250,16 @@ class ContentScript {
       const target = e.target as HTMLElement;
       if (this.isEditableElement(target)) {
         this.lastFocusedElement = target;
+        console.log('Tracked focused element:', target);
+      }
+    });
+
+    // Also track on click for better element detection
+    document.addEventListener('click', (e) => {
+      const target = e.target as HTMLElement;
+      if (this.isEditableElement(target)) {
+        this.lastFocusedElement = target;
+        console.log('Tracked clicked element:', target);
       }
     });
   }
@@ -256,32 +296,48 @@ class ContentScript {
   }
 
   private setElementValue(element: HTMLElement, value: string) {
+    console.log('Setting value in element:', element, 'Value:', value);
+    
     if (element.tagName.toLowerCase() === 'input') {
       (element as HTMLInputElement).value = value;
       element.dispatchEvent(new Event('input', { bubbles: true }));
+      console.log('Set value in input element');
       return;
     }
     
     if (element.tagName.toLowerCase() === 'textarea') {
       (element as HTMLTextAreaElement).value = value;
       element.dispatchEvent(new Event('input', { bubbles: true }));
+      console.log('Set value in textarea element');
       return;
     }
     
     if (element.contentEditable === 'true') {
       element.innerText = value;
       element.dispatchEvent(new Event('input', { bubbles: true }));
+      console.log('Set value in contentEditable element');
       return;
     }
+    
+    console.warn('Could not set value - element type not supported:', element);
   }
 
   private handlePolishText() {
     if (!this.lastFocusedElement) {
       console.warn('No focused editable element found');
-      return;
+      // Try to find the currently active element
+      const activeElement = document.activeElement as HTMLElement;
+      if (activeElement && this.isEditableElement(activeElement)) {
+        this.lastFocusedElement = activeElement;
+        console.log('Using active element as fallback:', activeElement);
+      } else {
+        console.error('No editable element found for text improvement');
+        return;
+      }
     }
 
     const currentText = this.getElementValue(this.lastFocusedElement);
+    console.log('Current text from element:', currentText);
     this.showOverlay(currentText);
   }
 
@@ -316,8 +372,11 @@ class ContentScript {
 
   private replaceText(newText: string) {
     if (this.lastFocusedElement) {
+      console.log('Replacing text in element:', this.lastFocusedElement);
       this.setElementValue(this.lastFocusedElement, newText);
       this.lastFocusedElement.focus();
+    } else {
+      console.warn('No last focused element found for text replacement');
     }
   }
 }
